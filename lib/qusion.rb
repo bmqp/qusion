@@ -16,6 +16,8 @@ module Qusion
   end
 
   def self.start_amqp_dispatcher(amqp_settings={})
+    # careful. it appears AMQP.settings might be going away in the 0.8 
+    # branch. 
     AMQP.settings.merge!(amqp_settings)
 
     if defined?(::PhusionPassenger) && ::PhusionPassenger.respond_to?(:on_event)
@@ -26,13 +28,13 @@ module Qusion
           Thread.current[:mq] = nil
           AMQP.instance_variable_set(:@conn, nil)
         end
-        start_in_background
+        start_in_background AMQP.settings
         die_gracefully_on_signal
       end
       return
     end
 
-    start_in_background
+    start_in_background AMQP.settings
     die_gracefully_on_signal
   end
 
@@ -49,14 +51,14 @@ module Qusion
     ChannelPool.pool_size = new_pool_size
   end
 
-  def self.start_in_background
+  def self.start_in_background amqp_settings
     if EM.reactor_running?
       raise ArgumentError, 'AMQP already connected' if ready_to_dispatch?
-      AMQP.start
+      AMQP.start amqp_settings 
     else
       raise ArgumentError, 'Qusion already started' if thread && thread.alive?
       @thread = Thread.new do
-        EM.run { AMQP.start }
+        EM.run { AMQP.start amqp_settings }
         raise "Premature AMQP shutdown" unless @graceful_stop
       end
       thread.abort_on_exception = true
@@ -73,6 +75,6 @@ module Qusion
   end
 
   def self.ready_to_dispatch?
-    EM.reactor_running? && AMQP.conn && AMQP.conn.connected?
+    EM.reactor_running? && AMQP.connection && AMQP.conn.connected?
   end
 end
